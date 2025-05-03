@@ -26,6 +26,19 @@ const directionalLight = new THREE.DirectionalLight(0xffffff, 3);
 directionalLight.position.set(-5, 5, 10);
 scene.add(directionalLight);
 
+// // Lighting (adjusted for dark background)
+// const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); // softened
+// scene.add(ambientLight);
+
+// const pointLight = new THREE.PointLight(0xffffff, 1.2); // slightly dimmed
+// pointLight.position.set(10, 10, 10);
+// scene.add(pointLight);
+
+// const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5); // toned down from 3
+// directionalLight.position.set(-5, 5, 10);
+// scene.add(directionalLight);
+
+
 // Cannon.js Physics World
 const world = new CANNON.World();
 world.gravity.set(0, 0, 0);
@@ -38,7 +51,7 @@ function isMobile() {
 // Sphere Config
 const sphereRadius =  2.5;
 const spawnDistanceThreshold = 8; // Min distance from camera
-const repulsionThreshold = 7; // Distance to start pushing away from camera
+const repulsionThreshold = 20; // Distance to start pushing away from camera
 const repulsionStrength = 5000;
 
 const sphereMaterial = new CANNON.Material();
@@ -63,30 +76,135 @@ const sphereShape = new CANNON.Sphere(sphereRadius);
 const colors = [
     0xBEFCFF, 0xDEFFFA , 0xFFDAF5, 0xB0E1FF, 0xE6C6FF
 ];
+
+// function createSphere(initialScale = 0) {
+//     // Generate a valid spawn position
+//     let position;
+//     do {
+//         position = new CANNON.Vec3(
+//             (Math.random() - 0.5) * 30,
+//             (Math.random() - 0.5) * 30,
+//             (Math.random() - 0.5) * 30
+//         );
+//     } while (position.distanceTo(camera.position) < spawnDistanceThreshold);
+
+//     // Three.js Mesh
+//     const material = new THREE.MeshStandardMaterial({
+//         color: new THREE.Color(`hsl(${Math.random() * 360}, 100%, 70%)`),
+//         roughness: 0.85,
+//         metalness: 0.2,
+//         transparent: true,
+//         opacity: .95,
+//         depthWrite: false
+//     });
+//     const geometry = new THREE.SphereGeometry(sphereRadius, 64, 64);
+//     const sphereMesh = new THREE.Mesh(geometry, material);
+//     sphereMesh.scale.set(initialScale, initialScale, initialScale);
+//     renderer.shadowMap.enabled = true;
+//     sphereMesh.castShadow = true;
+//     sphereMesh.receiveShadow = true;
+//     scene.add(sphereMesh);
+//     spheres.push(sphereMesh);
+
+//     // Cannon.js Physics Body
+//     const sphereBody = new CANNON.Body({
+//         mass: 300,
+//         shape: sphereShape,
+//         material: sphereMaterial,
+//         position,
+//         angularDamping: 0.2,
+//         linearDamping: 0.01
+//     });
+
+//     // Apply random impulse for floating effect
+//     sphereBody.applyImpulse(new CANNON.Vec3(
+//         (Math.random() - 0.5) * 1000,
+//         (Math.random() - 0.5) * 1000,
+//         (Math.random() - 0.5) * 1000
+//     ), new CANNON.Vec3(0, 0, 0));
+
+//     world.addBody(sphereBody);
+//     sphereBodies.push(sphereBody);
+
+//     // Animate sphere expansion
+//     animateScale(sphereMesh, 1, 0.5);
+// }
+
+function getSpheresCenter() {
+    if (sphereBodies.length === 0) return new CANNON.Vec3(0, 0, 0);
+
+    const center = new CANNON.Vec3(0, 0, 0);
+    for (const body of sphereBodies) {
+        center.vadd(body.position, center);
+    }
+    center.scale(1 / sphereBodies.length, center);
+    return center;
+}
+
 function createSphere(initialScale = 0) {
     // Generate a valid spawn position
-    let position;
-    do {
-        position = new CANNON.Vec3(
-            (Math.random() - 0.5) * 30,
-            (Math.random() - 0.5) * 30,
-            (Math.random() - 0.5) * 30
-        );
-    } while (position.distanceTo(camera.position) < spawnDistanceThreshold);
+    // let position;
+    // do {
+    //     position = new CANNON.Vec3(
+    //         (Math.random() - 0.5) * 30,
+    //         (Math.random() - 0.5) * 30,
+    //         (Math.random() - 0.5) * 30
+    //     );
+    // } while (position.distanceTo(camera.position) < spawnDistanceThreshold);
 
-    // Three.js Mesh
-    const material = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(`hsl(${Math.random() * 360}, 100%, 70%)`),
-        roughness: 0.85,
-        metalness: 0.2,
+    let position;
+    const useCenter = Math.random() < .40; // 20% chance to spawn in center
+
+    if (useCenter && sphereBodies.length > 0) {
+        position = getSpheresCenter();
+        position.x += (Math.random() - 0.5) * 2; // small offset to avoid overlaps
+        position.y += (Math.random() - 0.5) * 2;
+        position.z += (Math.random() - 0.5) * 2;
+    } else {
+        do {
+            position = new CANNON.Vec3(
+                (Math.random() - 0.5) * 30,
+                (Math.random() - 0.5) * 30,
+                (Math.random() - 0.5) * 30
+            );
+        } while (position.distanceTo(camera.position) < spawnDistanceThreshold);
+    }
+
+    // Generate HSL-based gradient colors
+    const h = Math.random() * 360;
+    const color1 = new THREE.Color(`hsl(${h}, 100%, 65%)`);
+    const color2 = new THREE.Color(`hsl(${(h + 60) % 360}, 100%, 85%)`);
+
+    // Create shader material with gradient
+    const material = new THREE.ShaderMaterial({
+        uniforms: {
+            color1: { value: color1 },
+            color2: { value: color2 },
+        },
+        vertexShader: `
+            varying vec3 vPosition;
+            void main() {
+                vPosition = position;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform vec3 color1;
+            uniform vec3 color2;
+            varying vec3 vPosition;
+            void main() {
+                float t = (vPosition.y + 2.5) / 5.0;
+                t = clamp(t, 0.0, 1.0);
+                gl_FragColor = vec4(mix(color1, color2, t), 0.95);
+            }
+        `,
         transparent: true,
-        opacity: .95,
-        depthWrite: false
+        depthWrite: false,
     });
+
     const geometry = new THREE.SphereGeometry(sphereRadius, 64, 64);
     const sphereMesh = new THREE.Mesh(geometry, material);
     sphereMesh.scale.set(initialScale, initialScale, initialScale);
-    renderer.shadowMap.enabled = true;
     sphereMesh.castShadow = true;
     sphereMesh.receiveShadow = true;
     scene.add(sphereMesh);
@@ -115,6 +233,7 @@ function createSphere(initialScale = 0) {
     // Animate sphere expansion
     animateScale(sphereMesh, 1, 0.5);
 }
+
 
 // Create Initial Spheres
 for (let i = 0; i < sphereCount; i++) {
